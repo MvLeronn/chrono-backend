@@ -1,0 +1,8 @@
+node_modules/
+dist/
+tmp/
+coverage/
+.yarn/
+src/generated/
+prisma/migrations/
+yarn.lock

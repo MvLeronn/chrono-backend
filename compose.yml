@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: chrono
+      POSTGRES_PASSWORD: chrono_local
+      POSTGRES_DB: chrono
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - chrono_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U chrono -d chrono']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  chrono_postgres:

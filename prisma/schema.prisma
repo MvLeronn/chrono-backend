@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ActivityType {
+  EVENT
+  TASK
+}
+
+enum ActivityStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+}
+
+enum Frequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+model User {
+  id              String           @id @default(uuid()) @db.Uuid
+  singletonKey    Int              @unique @default(1)
+  passwordHash    String
+  tokenVersion    Int              @default(0)
+  timezone        String           @default("America/Sao_Paulo")
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(3)
+  events          Event[]
+  templates       WeekTemplate[]
+  recurringEvents RecurringEvent[]
+}
+
+model Event {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  userId                String                   @db.Uuid
+  user                  User                     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  type                  ActivityType             @default(TASK)
+  title                 String                   @db.VarChar(200)
+  description           String?                  @db.Text
+  date                  DateTime                 @db.Date
+  startTime             DateTime?                @db.Time(0)
+  endTime               DateTime?                @db.Time(0)
+  status                ActivityStatus           @default(PENDING)
+  completedAt           DateTime?                @db.Timestamptz(3)
+  templateApplicationId String?                  @db.Uuid
+  templateApplication   WeekTemplateApplication? @relation(fields: [templateApplicationId], references: [id], onDelete: Restrict)
+  createdAt             DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                 @updatedAt @db.Timestamptz(3)
+
+  @@index([userId, date])
+  @@index([templateApplicationId])
+}
+
+model WeekTemplate {
+  id           String                    @id @default(uuid()) @db.Uuid
+  userId       String                    @db.Uuid
+  user         User                      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  name         String                    @db.VarChar(100)
+  archivedAt   DateTime?                 @db.Timestamptz(3)
+  createdAt    DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime                  @updatedAt @db.Timestamptz(3)
+  items        WeekTemplateItem[]
+  applications WeekTemplateApplication[]
+
+  @@index([userId, archivedAt])
+}
+
+model WeekTemplateItem {
+  id          String       @id @default(uuid()) @db.Uuid
+  templateId  String       @db.Uuid
+  template    WeekTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  weekday     Int
+  type        ActivityType @default(TASK)
+  title       String       @db.VarChar(200)
+  description String?      @db.Text
+  startTime   DateTime?    @db.Time(0)
+  endTime     DateTime?    @db.Time(0)
+
+  @@index([templateId])
+}
+
+model WeekTemplateApplication {
+  id         String       @id @default(uuid()) @db.Uuid
+  templateId String       @db.Uuid
+  template   WeekTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  weekStart  DateTime     @db.Date
+  appliedAt  DateTime     @default(now()) @db.Timestamptz(3)
+  events     Event[]
+
+  @@unique([templateId, weekStart])
+}
+
+model RecurringEvent {
+  id             String                @id @default(uuid()) @db.Uuid
+  userId         String                @db.Uuid
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  seriesId       String                @default(uuid()) @db.Uuid
+  previousId     String?               @unique @db.Uuid
+  previous       RecurringEvent?       @relation("SeriesSegments", fields: [previousId], references: [id], onDelete: Restrict)
+  next           RecurringEvent?       @relation("SeriesSegments")
+  type           ActivityType          @default(TASK)
+  title          String                @db.VarChar(200)
+  description    String?               @db.Text
+  startDate      DateTime              @db.Date
+  startTime      DateTime?             @db.Time(0)
+  endTime        DateTime?             @db.Time(0)
+  frequency      Frequency
+  interval       Int                   @default(1)
+  until          DateTime?             @db.Date
+  count          Int?
+  // Segment boundaries preserve the original anchor, including day 31 / Feb 29.
+  effectiveFrom  DateTime              @db.Date
+  effectiveUntil DateTime?             @db.Date
+  createdAt      DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime              @updatedAt @db.Timestamptz(3)
+  occurrences    RecurringOccurrence[]
+
+  @@index([userId, effectiveFrom])
+  @@index([seriesId])
+}
+
+model RecurringOccurrence {
+  id                  String         @id @default(uuid()) @db.Uuid
+  recurringEventId    String         @db.Uuid
+  recurringEvent      RecurringEvent @relation(fields: [recurringEventId], references: [id], onDelete: Restrict)
+  occurrenceDate      DateTime       @db.Date
+  scheduledDate       DateTime       @db.Date
+  status              ActivityStatus @default(PENDING)
+  completedAt         DateTime?      @db.Timestamptz(3)
+  typeOverride        ActivityType?
+  titleOverride       String?        @db.VarChar(200)
+  descriptionOverride String?        @db.Text
+  hasTimeOverride     Boolean        @default(false)
+  startTimeOverride   DateTime?      @db.Time(0)
+  endTimeOverride     DateTime?      @db.Time(0)
+  createdAt           DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime       @updatedAt @db.Timestamptz(3)
+
+  @@unique([recurringEventId, occurrenceDate])
+  @@index([scheduledDate])
+}
