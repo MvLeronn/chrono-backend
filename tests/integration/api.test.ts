@@ -433,3 +433,210 @@ test('seed preserves existing password; reset invalidates old JWTs', async () =>
     token = login.body.token;
     await request(app).get('/auth/me').set(auth()).expect(200);
 });
+
+test('recurring list filters active and historical segments before pagination', async () => {
+    const { today, addDays, dateString } = await import('../../src/domain/dates.js');
+    const boundary = today('America/Sao_Paulo');
+    const tomorrow = dateString(addDays(boundary, 1));
+    const yesterday = dateString(addDays(boundary, -1));
+    const active = await request(app)
+        .post('/recurring-events')
+        .set(auth())
+        .send({ title: 'Filter active series', startDate: tomorrow, frequency: 'DAILY' })
+        .expect(201);
+    const exhausted = await request(app)
+        .post('/recurring-events')
+        .set(auth())
+        .send({
+            title: 'Filter exhausted series',
+            startDate: yesterday,
+            frequency: 'DAILY',
+            count: 1,
+        })
+        .expect(201);
+    const ended = await request(app)
+        .post('/recurring-events')
+        .set(auth())
+        .send({ title: 'Filter ended series', startDate: tomorrow, frequency: 'DAILY' })
+        .expect(201);
+    await request(app)
+        .post(`/recurring-events/${ended.body.id}/end`)
+        .set(auth())
+        .send({ fromDate: tomorrow })
+        .expect(200);
+    const split = await request(app)
+        .post(`/recurring-events/${active.body.id}/split`)
+        .set(auth())
+        .send({ fromDate: tomorrow, changes: { title: 'Filter current segment' } })
+        .expect(201);
+    const current = await request(app)
+        .get('/recurring-events?status=active&limit=100')
+        .set(auth())
+        .expect(200);
+    const history = await request(app)
+        .get('/recurring-events?status=history&limit=100')
+        .set(auth())
+        .expect(200);
+    const all = await request(app)
+        .get('/recurring-events?status=all&limit=100')
+        .set(auth())
+        .expect(200);
+    const currentIds = current.body.items.map((item: { id: string }) => item.id);
+    const historyIds = history.body.items.map((item: { id: string }) => item.id);
+    assert.ok(currentIds.includes(split.body.id));
+    for (const id of [active.body.id, exhausted.body.id, ended.body.id]) {
+        assert.ok(historyIds.includes(id));
+        assert.ok(!currentIds.includes(id));
+    }
+    assert.equal(current.body.total + history.body.total, all.body.total);
+    const defaultList = await request(app)
+        .get('/recurring-events?limit=100')
+        .set(auth())
+        .expect(200);
+    assert.deepEqual(defaultList.body, current.body);
+    for (const status of ['active', 'history']) {
+        const full = status === 'active' ? current : history;
+        const page = await request(app)
+            .get(`/recurring-events?status=${status}&page=2&limit=1`)
+            .set(auth())
+            .expect(200);
+        assert.equal(page.body.total, full.body.total);
+        assert.equal(page.body.items[0].id, full.body.items[1].id);
+    }
+    await request(app).get('/recurring-events?status=invalid').set(auth()).expect(400);
+    await request(app)
+        .get('/recurring-events?status=active&status=history')
+        .set(auth())
+        .expect(400);
+});
+
+test('ending future repetitions preserves today and remains historical on fresh requests', async () => {
+    const { today, addDays, dateString } = await import('../../src/domain/dates.js');
+    const boundary = today('America/Sao_Paulo');
+    const currentDate = dateString(boundary);
+    const tomorrow = dateString(addDays(boundary, 1));
+    const rule = await request(app)
+        .post('/recurring-events')
+        .set(auth())
+        .send({
+            title: 'End future repetitions regression',
+            startDate: currentDate,
+            frequency: 'DAILY',
+        })
+        .expect(201);
+    const saved = await request(app)
+        .patch(`/recurring-events/${rule.body.id}/occurrences/${currentDate}`)
+        .set(auth())
+        .send({ status: 'PENDING', scheduledDate: tomorrow })
+        .expect(200);
+    // Selecting today conflicts with saved work; cutting future days preserves it.
+    await request(app)
+        .post(`/recurring-events/${rule.body.id}/end`)
+        .set(auth())
+        .send({ fromDate: currentDate })
+        .expect(409);
+    const ended = await request(app)
+        .post(`/recurring-events/${rule.body.id}/end`)
+        .set(auth())
+        .send({ fromDate: tomorrow })
+        .expect(200);
+    assert.equal(ended.body.effectiveUntil, currentDate);
+    const detail = await request(app)
+        .get(`/recurring-events/${rule.body.id}`)
+        .set(auth())
+        .expect(200);
+    assert.equal(detail.body.isActive, false);
+    const calendar = await request(app)
+        .get(`/calendar?from=${tomorrow}&to=${tomorrow}`)
+        .set(auth())
+        .expect(200);
+    const moved = calendar.body.items.find((item: { id: string }) => item.id === saved.body.id);
+    assert.equal(moved.occurrenceDate, currentDate);
+    assert.equal(moved.date, tomorrow);
+    assert.equal(moved.status, 'PENDING');
+
+    const repeated = await request(app)
+        .post(`/recurring-events/${rule.body.id}/end`)
+        .set(auth())
+        .send({ fromDate: tomorrow })
+        .expect(200);
+    assert.deepEqual(repeated.body, ended.body);
+    for (let refresh = 0; refresh < 2; refresh++) {
+        const current = await request(app)
+            .get('/recurring-events?status=active&limit=100')
+            .set(auth())
+            .expect(200);
+        const history = await request(app)
+            .get('/recurring-events?status=history&limit=100')
+            .set(auth())
+            .expect(200);
+        assert.ok(!current.body.items.some((item: { id: string }) => item.id === rule.body.id));
+        assert.ok(history.body.items.some((item: { id: string }) => item.id === rule.body.id));
+    }
+    const preserved = await request(app)
+        .get(`/recurring-events/${rule.body.id}/occurrences/${currentDate}`)
+        .set(auth())
+        .expect(200);
+    assert.equal(preserved.body.id, saved.body.id);
+    assert.equal(preserved.body.status, 'PENDING');
+    await request(app)
+        .get(`/recurring-events/${rule.body.id}/occurrences/${tomorrow}`)
+        .set(auth())
+        .expect(404);
+});
+
+test('editing future dates preserves today instead of including it in the split', async () => {
+    const { today, addDays, dateString } = await import('../../src/domain/dates.js');
+    const boundary = today('America/Sao_Paulo');
+    const currentDate = dateString(boundary);
+    const tomorrow = dateString(addDays(boundary, 1));
+    const newDate = dateString(addDays(boundary, 2));
+    const rule = await request(app)
+        .post('/recurring-events')
+        .set(auth())
+        .send({
+            title: 'Edit future repetitions regression',
+            startDate: currentDate,
+            frequency: 'DAILY',
+            count: 3,
+        })
+        .expect(201);
+    const saved = await request(app)
+        .patch(`/recurring-events/${rule.body.id}/occurrences/${currentDate}`)
+        .set(auth())
+        .send({ status: 'COMPLETED', titleOverride: 'Preserved completed work' })
+        .expect(200);
+    await request(app)
+        .post(`/recurring-events/${rule.body.id}/split`)
+        .set(auth())
+        .send({ fromDate: currentDate, changes: { startDate: newDate } })
+        .expect(409);
+    const changed = await request(app)
+        .post(`/recurring-events/${rule.body.id}/split`)
+        .set(auth())
+        .send({ fromDate: tomorrow, changes: { startDate: newDate } })
+        .expect(201);
+    const oldDetail = await request(app)
+        .get(`/recurring-events/${rule.body.id}`)
+        .set(auth())
+        .expect(200);
+    const newDetail = await request(app)
+        .get(`/recurring-events/${changed.body.id}`)
+        .set(auth())
+        .expect(200);
+    assert.equal(oldDetail.body.isActive, false);
+    assert.equal(newDetail.body.isActive, true);
+    assert.equal(changed.body.startDate, newDate);
+    assert.equal(changed.body.count, 2);
+    const preserved = await request(app)
+        .get(`/recurring-events/${rule.body.id}/occurrences/${currentDate}`)
+        .set(auth())
+        .expect(200);
+    assert.equal(preserved.body.id, saved.body.id);
+    assert.equal(preserved.body.title, 'Preserved completed work');
+    assert.equal(preserved.body.completedAt, saved.body.completedAt);
+    await request(app)
+        .get(`/recurring-events/${changed.body.id}/occurrences/${newDate}`)
+        .set(auth())
+        .expect(200);
+});

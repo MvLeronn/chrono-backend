@@ -94,3 +94,32 @@ export function expandRecurrence(rule: RecurrenceRule, from: Date, to: Date): Da
     }
     return dates;
 }
+
+/** Find one original occurrence on or after a date without expanding the series. */
+export function nextOccurrenceDate(rule: RecurrenceRule, from: Date): Date | null {
+    const lower = new Date(
+        Math.max(from.getTime(), rule.startDate.getTime(), rule.effectiveFrom.getTime()),
+    );
+    const upper = Math.min(
+        rule.until?.getTime() ?? Infinity,
+        rule.effectiveUntil?.getTime() ?? Infinity,
+    );
+    if (lower.getTime() > upper) return null;
+    const first = approximateIndex(rule, lower);
+    for (let index = first; index <= first + 1; index++) {
+        if (rule.count !== null && index >= rule.count) return null;
+        const date = dateAt(rule, index);
+        if (!date || date.getTime() > upper) return null;
+        if (date >= lower) return date;
+    }
+    return null;
+}
+
+/** Lifecycle used by both the filtered list and the detail's management actions. */
+export function isActiveRecurrence(
+    rule: RecurrenceRule,
+    hasContinuation: boolean,
+    currentDay: Date,
+): boolean {
+    return !hasContinuation && nextOccurrenceDate(rule, addDays(currentDay, 1)) !== null;
+}

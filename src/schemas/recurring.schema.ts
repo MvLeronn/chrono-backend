@@ -3,6 +3,7 @@ import {
     activityFields,
     dateSchema,
     idParams,
+    listSchema,
     request,
     statusSchema,
     timeSchema,
@@ -49,3 +50,10 @@ export const occurrenceBody = z
 export const updateOccurrenceSchema = request(occurrenceBody, occurrenceParams);
 export type RecurringInput = z.infer<typeof recurringBody>;
 export type OccurrenceInput = z.infer<typeof occurrenceBody>;
+
+export const recurringListSchema = listSchema.extend({
+    query: listSchema.shape.query.extend({
+        status: z.enum(['active', 'history', 'all']).default('active'),
+    }),
+});
+export type RecurringListStatus = z.infer<typeof recurringListSchema>['query']['status'];

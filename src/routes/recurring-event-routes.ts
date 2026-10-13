@@ -5,9 +5,10 @@ import {
     createRecurringSchema,
     splitRecurringSchema,
     endRecurringSchema,
+    recurringListSchema,
 } from '../schemas/recurring.schema.js';
 import { GetRecurringEventController } from '../controllers/recurring-event/get-recurring-event.controller.js';
-import { idSchema, listSchema } from '../schemas/common.schema.js';
+import { idSchema } from '../schemas/common.schema.js';
 import { ListRecurringEventsController } from '../controllers/recurring-event/list-recurring-events.controller.js';
 import { SplitRecurringEventController } from '../controllers/recurring-event/split-recurring-event.controller.js';
 import { EndRecurringEventController } from '../controllers/recurring-event/end-recurring-event.controller.js';
@@ -28,7 +29,7 @@ recurringEventRoutes.get(
 
 recurringEventRoutes.get(
     '/',
-    validateSchema(listSchema),
+    validateSchema(recurringListSchema),
     new ListRecurringEventsController().handle,
 );
 

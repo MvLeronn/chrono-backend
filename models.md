@@ -284,10 +284,18 @@ export interface RecurringEventResponse {
   invalidDatePolicy: 'LAST_VALID_DAY';
 }
 
+export interface RecurringEventDetailResponse extends RecurringEventResponse {
+  isActive: boolean;
+}
+
+export type RecurringListStatus = 'active' | 'history' | 'all';
+export interface RecurringListQuery extends PaginationQuery {
+    status?: RecurringListStatus; // Default: active
+}
 export type RecurringEventListResponse = Page<RecurringEventResponse>;
 ```
 
-Criação, detalhe, lista, divisão e encerramento usam o mesmo formato. Não há arrays `occurrences`, objetos `previous`/`next`, `status` ou `completedAt` na regra retornada. `previousId`, `seriesId`, limites efetivos e `invalidDatePolicy` são somente de saída. `until` e `count` não podem ser simultaneamente não nulos. `effectiveUntil` pode ser anterior a `effectiveFrom` quando o segmento é inteiramente encerrado/substituído; não imponha a invariância contrária no frontend.
+Criação, lista, divisão e encerramento usam o mesmo formato. O detalhe acrescenta `isActive`, pelo mesmo critério da lista de atuais. Não há arrays `occurrences`, objetos `previous`/`next`, `status` ou `completedAt` na regra retornada. `previousId`, `seriesId`, limites efetivos e `invalidDatePolicy` são somente de saída. `until` e `count` não podem ser simultaneamente não nulos. `effectiveUntil` pode ser anterior a `effectiveFrom` quando o segmento é inteiramente encerrado/substituído; não imponha a invariância contrária no frontend.
 
 ## Erros
 
@@ -375,9 +383,9 @@ No código atual, só validação e conflito de ocorrências retornam `details`.
 | PATCH  | `/week-templates/:id`                                     | `IdParams`         | —                 | `UpdateWeekTemplateRequest`   | 200 → `WeekTemplateResponse`             |
 | DELETE | `/week-templates/:id`                                     | `IdParams`         | —                 | —                             | 204 → `NoContent`                        |
 | POST   | `/week-templates/:id/apply`                               | `IdParams`         | —                 | `ApplyWeekTemplateRequest`    | 201 ou 200 → `ApplyWeekTemplateResponse` |
-| GET    | `/recurring-events`                                       | —                  | `PaginationQuery` | —                             | 200 → `RecurringEventListResponse`       |
+| GET    | `/recurring-events`                                       | —                  | `RecurringListQuery` | —                             | 200 → `RecurringEventListResponse`       |
 | POST   | `/recurring-events`                                       | —                  | —                 | `CreateRecurringEventRequest` | 201 → `RecurringEventResponse`           |
-| GET    | `/recurring-events/:id`                                   | `IdParams`         | —                 | —                             | 200 → `RecurringEventResponse`           |
+| GET    | `/recurring-events/:id`                                   | `IdParams`         | —                 | —                             | 200 → `RecurringEventDetailResponse`           |
 | POST   | `/recurring-events/:id/split`                             | `IdParams`         | —                 | `SplitRecurringEventRequest`  | 201 → `RecurringEventResponse`           |
 | POST   | `/recurring-events/:id/end`                               | `IdParams`         | —                 | `EndRecurringEventRequest`    | 200 → `RecurringEventResponse`           |
 | GET    | `/recurring-events/:id/occurrences/:occurrenceDate`       | `OccurrenceParams` | —                 | —                             | 200 → `ResolvedOccurrence`               |

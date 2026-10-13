@@ -208,10 +208,10 @@ Todas as operações são privadas. `id` identifica um **segmento** de `Recurrin
 
 ### GET `/recurring-events`
 
-- **Entrada:** query opcional `PaginationQuery`; sem params/body.
-- **Sucesso:** 200 `RecurringEventListResponse`; cada item tem o mesmo formato do detalhe.
-- **Filtro/ordem:** todos os segmentos do proprietário, inclusive encerrados e históricos; `effectiveFrom DESC`, `id ASC`. `total` conta segmentos, não séries.
-- **Limites:** sem filtro de atividade, frequência, período ou status de encerramento; página além do total retorna lista vazia.
+- **Entrada:** query opcional `RecurringListQuery` (`page`, `limit`, `status`); sem params/body.
+- **Sucesso:** 200 `RecurringEventListResponse`; cada item usa `RecurringEventResponse`, sem o indicador de gerenciamento exclusivo do detalhe.
+- **Filtro/ordem:** query `status=active|history|all`, padrão `active`. Atuais são segmentos sem continuação com ao menos uma ocorrência original após hoje no fuso do proprietário. Ocorrências de hoje permanecem no calendário, mas não mantêm em Atuais uma regra sem próximas repetições; histórico é o complemento. Limites por data, quantidade e trecho são respeitados. `all` inclui todos. Ordem: `effectiveFrom DESC`, `id ASC`. O filtro é aplicado antes da paginação; `total` conta segmentos do filtro, não séries.
+- **Limites:** sem filtro de atividade, frequência ou período; página além do total filtrado retorna lista vazia.
 
 ### POST `/recurring-events`
 
@@ -227,7 +227,7 @@ Semanal gera um dia por semana selecionada, ancorado no dia da semana de `startD
 ### GET `/recurring-events/:id`
 
 - **Entrada:** `IdParams`; sem query/body.
-- **Sucesso:** 200 `RecurringEventResponse`, inclusive para segmento encerrado. Não inclui ocorrências ou objetos relacionados.
+- **Sucesso:** 200 `RecurringEventDetailResponse`, inclusive para segmento encerrado. Adiciona `isActive`, calculado pelo mesmo critério do filtro Atuais (sem continuação e com ocorrência após hoje). Use esse indicador para oferecer ações de edição/encerramento. Não inclui ocorrências ou objetos relacionados.
 - **Erros relevantes:** 404 `NOT_FOUND`.
 
 ### POST `/recurring-events/:id/split`

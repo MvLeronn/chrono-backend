@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { dateString, parseDate, today, validDateString } from '../../src/domain/dates.js';
 import {
     dateAt,
+    nextOccurrenceDate,
     expandRecurrence,
     occurrenceIndex,
     type RecurrenceRule,
@@ -118,4 +119,42 @@ test('completion is idempotent and reopening clears its timestamp', () => {
     assert.equal(completionTime('COMPLETED', first, later), first);
     assert.equal(completionTime('PENDING', first, later), null);
     assert.equal(completionTime('COMPLETED', null, later), later);
+});
+
+test('next original occurrence respects count, segment limits, and distant anchors', () => {
+    const from = parseDate('2026-10-13');
+    assert.equal(nextOccurrenceDate(rule('2026-10-12', 'DAILY', { count: 1 }), from), null);
+    assert.equal(
+        nextOccurrenceDate(
+            rule('2026-10-01', 'DAILY', { effectiveUntil: parseDate('2026-10-12') }),
+            from,
+        ),
+        null,
+    );
+    assert.equal(
+        dateString(nextOccurrenceDate(rule('2026-10-13', 'DAILY', { count: 1 }), from)!),
+        '2026-10-13',
+    );
+    assert.equal(
+        dateString(nextOccurrenceDate(rule('2026-01-31', 'MONTHLY'), parseDate('2026-02-01'))!),
+        '2026-02-28',
+    );
+    assert.equal(
+        dateString(nextOccurrenceDate(rule('2024-02-29', 'YEARLY'), parseDate('2026-03-01'))!),
+        '2027-02-28',
+    );
+    assert.equal(
+        dateString(nextOccurrenceDate(rule('0001-01-01', 'DAILY'), parseDate('9999-12-31'))!),
+        '9999-12-31',
+    );
+    assert.equal(
+        nextOccurrenceDate(
+            rule('9999-12-31', 'MONTHLY', {
+                effectiveFrom: parseDate('9999-12-31'),
+                effectiveUntil: parseDate('9999-12-30'),
+            }),
+            parseDate('9999-12-01'),
+        ),
+        null,
+    );
 });

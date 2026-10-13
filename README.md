@@ -86,7 +86,7 @@ yarn start
 Os testes de integração precisam de um PostgreSQL de desenvolvimento acessível e permissão de criação de schemas:
 
 ```powershell
-$env:TEST_DATABASE_URL = 'postgresql://chrono:chrono_local@localhost:5432/chrono'
+$env:TEST_DATABASE_URL = 'postgresql://chrono:chrono_local@localhost:15432/chrono'
 yarn test:integration
 ```
 
