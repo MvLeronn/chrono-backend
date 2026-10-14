@@ -640,3 +640,26 @@ test('editing future dates preserves today instead of including it in the split'
         .set(auth())
         .expect(200);
 });
+
+
+test('deleting one recurring day removes moved details without recreating the original day', async () => {
+    const rule = await request(app).post('/recurring-events').set(auth()).send({
+        title: 'Delete only one day', type: 'TASK', startDate: '2035-01-01', frequency: 'DAILY', interval: 1,
+    }).expect(201);
+    const path = `/recurring-events/${rule.body.id}/occurrences/2035-01-02`;
+    await request(app).patch(path).set(auth()).send({ scheduledDate: '2035-01-04', titleOverride: 'Moved', status: 'CANCELED' }).expect(200);
+    await request(app).delete(path).expect(401);
+    await request(app).delete(path).set(auth()).expect(204);
+    await request(app).delete(path).set(auth()).expect(204);
+    await request(app).get(path).set(auth()).expect(404);
+    await request(app).patch(path).set(auth()).send({ status: 'PENDING' }).expect(404);
+    await request(app).delete(`${path}/state`).set(auth()).expect(404);
+    const calendar = await request(app).get('/calendar?from=2035-01-01&to=2035-01-04').set(auth()).expect(200);
+    const items = calendar.body.items.filter((item: { recurringEventId?: string }) => item.recurringEventId === rule.body.id);
+    assert.deepEqual(items.map((item: { occurrenceDate: string }) => item.occurrenceDate), ['2035-01-01', '2035-01-03', '2035-01-04']);
+    const saved = await prisma.recurringOccurrence.findFirstOrThrow({ where: { recurringEventId: rule.body.id } });
+    assert.equal(saved.deleted, true);
+    assert.equal(saved.titleOverride, null);
+    assert.equal(saved.descriptionOverride, null);
+    assert.equal(saved.completedAt, null);
+});

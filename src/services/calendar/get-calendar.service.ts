@@ -55,9 +55,11 @@ export class GetCalendarService {
                     const resolved = new Map<string, ReturnType<typeof resolveOccurrence>>();
                     for (const date of expandRecurrence(rule, from, to)) {
                         const key = dateString(date);
+                        if (saved.get(key)?.deleted) continue;
                         resolved.set(key, resolveOccurrence(rule, date, saved.get(key)));
                     }
                     for (const item of rule.occurrences) {
+                        if (item.deleted) continue;
                         if (occurrenceIndex(rule, item.occurrenceDate) !== null) {
                             resolved.set(
                                 dateString(item.occurrenceDate),

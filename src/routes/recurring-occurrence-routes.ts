@@ -1,3 +1,4 @@
+import { DeleteRecurringOccurrenceController } from '../controllers/recurring-occurrence/delete-recurring-occurrence.controller.js';
 import { Router } from 'express';
 import { GetRecurringOccurrenceController } from '../controllers/recurring-occurrence/get-recurring-occurrence.controller.js';
 import { validateSchema } from '../middlewares/validate-schema.js';
@@ -23,6 +24,12 @@ recurringOccurrenceRoutes.delete(
     '/:id/occurrences/:occurrenceDate/state',
     validateSchema(getOccurrenceSchema),
     new ResetRecurringOccurrenceController().handle,
+);
+
+recurringOccurrenceRoutes.delete(
+    '/:id/occurrences/:occurrenceDate',
+    validateSchema(getOccurrenceSchema),
+    new DeleteRecurringOccurrenceController().handle,
 );
 
 export default recurringOccurrenceRoutes;

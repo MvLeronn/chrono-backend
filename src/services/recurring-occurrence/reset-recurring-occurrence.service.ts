@@ -1,3 +1,4 @@
+import { AppError } from '../../domain/errors.js';
 import { resolveOccurrence } from '../../domain/activity.js';
 import { parseDate } from '../../domain/dates.js';
 import { transaction } from '../shared/transaction.js';
@@ -10,6 +11,8 @@ export class ResetRecurringOccurrenceService {
             const rule = await ownedRule(tx, userId, id);
             const date = parseDate(dateValue);
             assertOccurrence(rule, date);
+            const existing = await tx.recurringOccurrence.findUnique({ where: { recurringEventId_occurrenceDate: { recurringEventId: id, occurrenceDate: date } } });
+            if (existing?.deleted) throw new AppError(404, 'OCCURRENCE_NOT_FOUND', 'Ocorrência excluída.');
             await tx.recurringOccurrence.deleteMany({
                 where: { recurringEventId: id, occurrenceDate: date },
             });

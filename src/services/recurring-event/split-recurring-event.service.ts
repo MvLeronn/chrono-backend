@@ -86,7 +86,7 @@ export class SplitRecurringEventService {
                 where: { recurringEventId: id, occurrenceDate: { gte: boundary } },
             });
             const conflicts = saved.filter(
-                (item) => occurrenceIndex(data, item.occurrenceDate) === null,
+                (item) => !item.deleted && occurrenceIndex(data, item.occurrenceDate) === null,
             );
             if (conflicts.length)
                 throw new AppError(

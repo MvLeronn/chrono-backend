@@ -1,3 +1,4 @@
+import { AppError } from '../../domain/errors.js';
 import { resolveOccurrence } from '../../domain/activity.js';
 import { parseDate } from '../../domain/dates.js';
 import { transaction } from '../shared/transaction.js';
@@ -15,6 +16,7 @@ export class GetRecurringOccurrenceService {
                     recurringEventId_occurrenceDate: { recurringEventId: id, occurrenceDate: date },
                 },
             });
+            if (saved?.deleted) throw new AppError(404, 'OCCURRENCE_NOT_FOUND', 'Ocorrência excluída.');
             return resolveOccurrence(rule, date, saved);
         });
     }

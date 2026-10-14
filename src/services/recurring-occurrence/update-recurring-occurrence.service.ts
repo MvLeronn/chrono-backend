@@ -1,3 +1,4 @@
+import { AppError } from '../../domain/errors.js';
 import { assertTimeRange, completionTime, resolveOccurrence } from '../../domain/activity.js';
 import { parseDate, parseTime } from '../../domain/dates.js';
 import type { OccurrenceInput } from '../../schemas/recurring.schema.js';
@@ -15,6 +16,7 @@ export class UpdateRecurringOccurrenceService {
                 recurringEventId_occurrenceDate: { recurringEventId: id, occurrenceDate },
             };
             const existing = await tx.recurringOccurrence.findUnique({ where });
+            if (existing?.deleted) throw new AppError(404, 'OCCURRENCE_NOT_FOUND', 'Ocorrência excluída.');
             const status = input.status ?? existing?.status ?? 'PENDING';
             const timeData =
                 input.timeOverride === undefined

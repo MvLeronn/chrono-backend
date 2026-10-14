@@ -26,7 +26,7 @@ export class EndRecurringEventService {
             if (current.effectiveUntil && boundary > current.effectiveUntil)
                 return serializeRule(current);
             const saved = await tx.recurringOccurrence.findMany({
-                where: { recurringEventId: id, occurrenceDate: { gte: boundary } },
+                where: { recurringEventId: id, deleted: false, occurrenceDate: { gte: boundary } },
             });
             if (saved.length)
                 throw new AppError(
