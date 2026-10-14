@@ -315,3 +315,13 @@ Fonte: [services recurring-occurrence](./src/services/recurring-occurrence/) e [
 - Não há endpoint público de aplicações, estado bruto da ocorrência, mudança de fuso, reabertura de regra, restauração de modelo, upload, busca textual ou integrações externas de calendário.
 - Não há idempotência geral para POST nem controle de concorrência por versão/`If-Match`. As garantias específicas de aplicação, conclusão e reset estão descritas nas respectivas operações.
 - Documentação baseada em inspeção de fonte, configurações, migrations e testes existentes; implantação, configuração efetiva do ambiente e dados de produção não foram verificados. Este trabalho não executou operações de API contra dados reais.
+
+### DELETE `/recurring-events/:id`
+
+Exclui definitivamente um segmento do histórico e todas as suas ocorrências persistidas, inclusive concluídas, reagendadas e marcadores de exclusão. Suas ocorrências virtuais também deixam de aparecer no calendário. Não exclui os demais segmentos da série: reconecta os vínculos `previousId` preservando `seriesId`, datas, limites e conteúdo dos sobreviventes.
+
+- Autenticação obrigatória; `id` deve ser UUID e pertencer ao usuário autenticado.
+- Usa o mesmo critério de `status=history`, considerando o fuso do usuário e repetições após hoje.
+- Retorna `204` sem corpo. Registro inexistente, de outro usuário ou já excluído retorna `404 NOT_FOUND`.
+- Regra ainda ativa retorna `409 RECURRENCE_ACTIVE`; encerre as próximas repetições antes de excluir.
+- Operação atômica. Após sucesso, recarregue as listas de recorrências e os períodos afetados do calendário. A interface deve informar que a exclusão também apaga o histórico de ocorrências daquele segmento.

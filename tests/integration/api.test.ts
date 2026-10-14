@@ -663,3 +663,154 @@ test('deleting one recurring day removes moved details without recreating the or
     assert.equal(saved.descriptionOverride, null);
     assert.equal(saved.completedAt, null);
 });
+
+test('delete historical recurrence removes saved and virtual occurrences with access checks', async () => {
+    const rule = await request(app)
+        .post('/recurring-events')
+        .set(auth())
+        .send({
+            title: 'Delete exhausted history',
+            startDate: '2020-01-01',
+            frequency: 'DAILY',
+            count: 3,
+        })
+        .expect(201);
+    const path = `/recurring-events/${rule.body.id}`;
+    await request(app)
+        .patch(`${path}/occurrences/2020-01-01`)
+        .set(auth())
+        .send({
+            status: 'COMPLETED',
+            scheduledDate: '2020-01-05',
+        })
+        .expect(200);
+    await request(app).delete(`${path}/occurrences/2020-01-02`).set(auth()).expect(204);
+    await request(app).delete(path).expect(401);
+    await request(app).delete('/recurring-events/not-a-uuid').set(auth()).expect(400);
+    await request(app).delete(`/recurring-events/${randomUUID()}`).set(auth()).expect(404);
+    const { DeleteRecurringEventService } =
+        await import('../../src/services/recurring-event/delete-recurring-event.service.js');
+    await assert.rejects(new DeleteRecurringEventService().execute(randomUUID(), rule.body.id), {
+        code: 'NOT_FOUND',
+    });
+    await request(app).delete(path).set(auth()).expect(204);
+    assert.equal(
+        await prisma.recurringOccurrence.count({ where: { recurringEventId: rule.body.id } }),
+        0,
+    );
+    await request(app).get(path).set(auth()).expect(404);
+    await request(app).delete(path).set(auth()).expect(404);
+    const calendar = await request(app)
+        .get('/calendar?from=2020-01-01&to=2020-01-07')
+        .set(auth())
+        .expect(200);
+    assert.ok(
+        !calendar.body.items.some(
+            (item: { recurringEventId?: string }) => item.recurringEventId === rule.body.id,
+        ),
+    );
+    const history = await request(app)
+        .get('/recurring-events?status=history&limit=100')
+        .set(auth())
+        .expect(200);
+    assert.ok(!history.body.items.some((item: { id: string }) => item.id === rule.body.id));
+});
+
+test('delete rejects active recurrence and reconnects surviving segments', async () => {
+    const { today, addDays, dateString } = await import('../../src/domain/dates.js');
+    const boundary = today('America/Sao_Paulo');
+    const first = await request(app)
+        .post('/recurring-events')
+        .set(auth())
+        .send({
+            title: 'Keep neighboring segments',
+            startDate: dateString(boundary),
+            frequency: 'DAILY',
+        })
+        .expect(201);
+    const second = await request(app)
+        .post(`/recurring-events/${first.body.id}/split`)
+        .set(auth())
+        .send({
+            fromDate: dateString(addDays(boundary, 2)),
+            changes: { title: 'Remove middle segment' },
+        })
+        .expect(201);
+    const third = await request(app)
+        .post(`/recurring-events/${second.body.id}/split`)
+        .set(auth())
+        .send({
+            fromDate: dateString(addDays(boundary, 4)),
+            changes: { title: 'Keep current segment' },
+        })
+        .expect(201);
+    const active = await request(app)
+        .delete(`/recurring-events/${third.body.id}`)
+        .set(auth())
+        .expect(409);
+    assert.equal(active.body.error.code, 'RECURRENCE_ACTIVE');
+    const previousBefore = await prisma.recurringEvent.findUniqueOrThrow({
+        where: { id: first.body.id },
+    });
+    await request(app).delete(`/recurring-events/${second.body.id}`).set(auth()).expect(204);
+    const surviving = await request(app)
+        .get(`/recurring-events/${third.body.id}`)
+        .set(auth())
+        .expect(200);
+    assert.equal(surviving.body.previousId, first.body.id);
+    assert.equal(surviving.body.seriesId, first.body.seriesId);
+    assert.equal(surviving.body.effectiveFrom, third.body.effectiveFrom);
+    assert.equal(surviving.body.isActive, true);
+    assert.deepEqual(
+        await prisma.recurringEvent.findUniqueOrThrow({ where: { id: first.body.id } }),
+        previousBefore,
+    );
+    await request(app).delete(`/recurring-events/${first.body.id}`).set(auth()).expect(204);
+    const root = await request(app)
+        .get(`/recurring-events/${third.body.id}`)
+        .set(auth())
+        .expect(200);
+    assert.equal(root.body.previousId, null);
+    assert.equal(root.body.seriesId, first.body.seriesId);
+});
+
+test('concurrent historical segment deletions preserve the active continuation', async () => {
+    const { today, addDays, dateString } = await import('../../src/domain/dates.js');
+    const boundary = today('America/Sao_Paulo');
+    const first = await request(app)
+        .post('/recurring-events')
+        .set(auth())
+        .send({
+            title: 'Concurrent history removal',
+            startDate: dateString(boundary),
+            frequency: 'DAILY',
+        })
+        .expect(201);
+    const second = await request(app)
+        .post(`/recurring-events/${first.body.id}/split`)
+        .set(auth())
+        .send({
+            fromDate: dateString(addDays(boundary, 1)),
+            changes: { title: 'Concurrent continuation' },
+        })
+        .expect(201);
+    const third = await request(app)
+        .post(`/recurring-events/${second.body.id}/split`)
+        .set(auth())
+        .send({
+            fromDate: dateString(addDays(boundary, 2)),
+            changes: { title: 'Concurrent continuation' },
+        })
+        .expect(201);
+    await Promise.all(
+        [first, second].map((rule) =>
+            request(app).delete(`/recurring-events/${rule.body.id}`).set(auth()).expect(204),
+        ),
+    );
+    const remaining = await request(app)
+        .get(`/recurring-events/${third.body.id}`)
+        .set(auth())
+        .expect(200);
+    assert.equal(remaining.body.previousId, null);
+    assert.equal(remaining.body.isActive, true);
+});

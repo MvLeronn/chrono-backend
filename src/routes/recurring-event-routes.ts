@@ -1,3 +1,4 @@
+import { DeleteRecurringEventController } from '../controllers/recurring-event/delete-recurring-event.controller.js';
 import { Router } from 'express';
 import { CreateRecurringEventController } from '../controllers/recurring-event/create-recurring-event.controller.js';
 import { validateSchema } from '../middlewares/validate-schema.js';
@@ -43,6 +44,12 @@ recurringEventRoutes.post(
     '/:id/end',
     validateSchema(endRecurringSchema),
     new EndRecurringEventController().handle,
+);
+
+recurringEventRoutes.delete(
+    '/:id',
+    validateSchema(idSchema),
+    new DeleteRecurringEventController().handle,
 );
 
 export default recurringEventRoutes;
